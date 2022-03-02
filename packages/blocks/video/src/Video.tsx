@@ -1,6 +1,6 @@
 import { BlockComponent } from "blockprotocol/react";
 import React from "react";
-import { Media } from "./components/Media";
+import { Media } from "@hashintel/block-image/src/components/Media";
 
 type AppProps = {
   initialCaption?: string;

@@ -41,7 +41,7 @@ module.exports = {
     rules: [
       {
         test: /\.(t|j)sx?$/,
-        exclude: /(node_modules|bower_components)/,
+        exclude: /(node_modules\/(?!@hashintel\/block-image))/,
         use: {
           loader: "babel-loader",
         },
