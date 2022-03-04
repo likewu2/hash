@@ -1,5 +1,5 @@
 import { JSONObject } from "blockprotocol";
-import Ajv2019, { AnySchemaObject } from "ajv/dist/2019";
+import Ajv2019 from "ajv/dist/2019";
 import addFormats from "ajv-formats";
 import $RefParser, {
   FileInfo,
@@ -84,7 +84,7 @@ export const schema$idRef = (schema$id: string) => {
   return JSON.stringify([{ $ref: schema$id }]);
 };
 
-type SchemaResolverFunction = (url: string) => Promise<AnySchemaObject>;
+type SchemaResolverFunction = (url: string) => Promise<Record<string, any>>;
 
 /**
  * Empty, default resolver for $refs in JSON Schemas
@@ -103,6 +103,82 @@ export class TypeMismatch extends Error {
     super(msg);
     Object.setPrototypeOf(this, TypeMismatch.prototype);
   }
+}
+
+export type PropertyGroup = {
+  parents?: PropertyGroup[];
+  $id?: string;
+  properties: Property[];
+};
+
+export type Property = {
+  name: string;
+  type: string;
+  format?: string;
+  description?: string;
+  otherFields: Record<string, any>;
+};
+
+const partition = <T>(xs: Array<T>, pred: (t: T) => boolean) =>
+  xs.reduce<[T[], T[]]>(
+    (rst, elm) => {
+      // eslint-disable-next-line no-unused-expressions
+      pred(elm) ? rst[0].push(elm) : rst[1].push(elm);
+      return rst;
+    },
+    [[], []],
+  );
+
+function extractProperties(schema: Record<string, any>): PropertyGroup {
+  const properties: Property[] = [];
+  for (const [field, value] of Object.entries(schema?.properties ?? {})) {
+    const { type, format, description, ...otherFields } = value as Record<
+      string,
+      any
+    >;
+    properties.push({
+      name: field,
+      type,
+      format,
+      description,
+      otherFields,
+    });
+  }
+  return { $id: schema?.$id, properties };
+}
+
+export async function allOfResolve(
+  schema: Record<string, any>,
+  resolver: SchemaResolverFunction,
+): Promise<PropertyGroup> {
+  const allOf = schema?.allOf ?? {};
+
+  let nestedAndSpreaded: [PropertyGroup[] | undefined, PropertyGroup[]] = [
+    undefined,
+    [],
+  ];
+  if (allOf && allOf.length > 0) {
+    nestedAndSpreaded = partition(
+      await Promise.all(
+        allOf.map(async (subSchema: Record<string, any>) => {
+          return subSchema.$ref
+            ? allOfResolve(await resolver(subSchema.$ref), resolver)
+            : extractProperties(subSchema);
+        }),
+      ),
+      (schm: PropertyGroup) => !!schm.$id,
+    );
+  }
+  const [parents, spreaded] = nestedAndSpreaded;
+
+  const otherprops = spreaded.flatMap<Property>((x) => x.properties);
+
+  const schemaProps = extractProperties(schema).properties;
+  return {
+    parents,
+    $id: schema?.$id,
+    properties: [...schemaProps, ...otherprops],
+  };
 }
 
 /**
