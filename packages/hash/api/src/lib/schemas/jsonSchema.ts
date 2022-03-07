@@ -1,61 +1,8 @@
 import { JSONObject } from "blockprotocol";
 import Ajv2019 from "ajv/dist/2019";
 import addFormats from "ajv-formats";
-import $RefParser, {
-  FileInfo,
-  JSONSchema,
-} from "@apidevtools/json-schema-ref-parser";
 import { cloneDeep, partition } from "lodash";
 import { FRONTEND_URL } from "../config";
-
-/**
- * Given a list of all properties, check if any duplicates are present by the property name.
- * @param allProps list of properties to duplicate check
- * @returns a list of type-mismatch errors. Does not throw an exception.
- */
-const propertyKeyValidator = <T extends [x: string, _: any][]>(
-  ...allProps: T
-) => {
-  const seen: Map<string, any> = new Map([]);
-  const duplicateErrors: string[] = [];
-
-  // Iterate all props, check for duplicates and throw an error if types mismatch
-  for (const [prop, value] of allProps) {
-    if (seen.has(prop)) {
-      const other = seen.get(prop);
-
-      if (value?.type !== other?.type) {
-        duplicateErrors.push(
-          `Type mismatch on "${prop}". Got "${value?.type}" expected "${other?.type}"`,
-        );
-      }
-    }
-
-    seen.set(prop, value);
-  }
-
-  return duplicateErrors;
-};
-
-/**
- * Flatten JSONSchema into all properties. This traverses schemas recursively.
- * Caveat of using recursing is potential stack overflow due to (lack of) tail call optimization.
- * Could be rewritten to an iterative implementation.
- *   - but realistically schemas are not going to inherit deeply enough for stack overflow.
- */
-const flattenNestedProps = (schema: JSONSchema): [_: string, __: any][] => {
-  const currentProps = Object.entries(schema?.properties ?? {});
-  const newProps =
-    schema?.allOf?.flatMap((prop: any) => {
-      if (typeof prop !== "boolean") {
-        return flattenNestedProps(prop);
-      } else {
-        return [];
-      }
-    }) ?? [];
-
-  return [...currentProps, ...newProps];
-};
 
 export const jsonSchemaVersion = "https://json-schema.org/draft/2019-09/schema";
 
@@ -169,6 +116,134 @@ export async function allOfResolve(
   };
 }
 
+const maximizeConstraint = Math.max;
+const minimizeConstraint = Math.min;
+
+type Constraint =
+  | "exclusiveMaximum"
+  | "exclusiveMinimum"
+  | "maximum"
+  | "minimum"
+  | "maxItems"
+  | "minItems"
+  | "maxLength"
+  | "minLength"
+  | "maxProperties"
+  | "minProperties";
+
+const propertyConstraintMerging: Record<
+  Constraint | string,
+  (...values: number[]) => number
+> = {
+  exclusiveMaximum: minimizeConstraint,
+  exclusiveMinimum: maximizeConstraint,
+  maximum: minimizeConstraint,
+  minimum: maximizeConstraint,
+  maxItems: minimizeConstraint,
+  minItems: maximizeConstraint,
+  maxLength: minimizeConstraint,
+  minLength: maximizeConstraint,
+  maxProperties: minimizeConstraint,
+  minProperties: maximizeConstraint,
+} as const;
+
+const validationConstraintPairs = (
+  constraints: Record<string, number>,
+): string[] => {
+  const constraintErrors: string[] = [];
+
+  const pairs: [Constraint, Constraint][] = [
+    ["exclusiveMaximum", "exclusiveMinimum"],
+    ["maximum", "minimum"],
+    ["maxItems", "minItems"],
+    ["maxLength", "minLength"],
+    ["maxProperties", "minProperties"],
+  ];
+
+  for (const [maxKey, minKey] of pairs) {
+    const max = constraints[maxKey];
+    const min = constraints[minKey];
+
+    if (max !== undefined && min !== undefined) {
+      if (max < min) {
+        constraintErrors.push(
+          `Constraint '${minKey}' (${min}) to '${maxKey}' (${max}) defines a negative interval.`,
+        );
+      }
+    }
+  }
+
+  return constraintErrors;
+};
+
+type PropertyWithConstraint = {
+  property: Property;
+  numberConstraints: Record<string, number>;
+};
+
+const CONSTRAINT_RE = /.*(min|max).*/i;
+
+/**
+ * Given a list of all properties, check if any duplicates are present by the property name.
+ * @param properties list of properties to duplicate check
+ * @returns a list of type-mismatch errors. Does not throw an exception.
+ */
+const propertyKeyValidator = (properties: Property[]): string[] => {
+  const seen: Map<string, PropertyWithConstraint> = new Map();
+  const errors: string[] = [];
+
+  // Iterate all props, check for duplicates and throw an error if types mismatch
+  for (const property of properties) {
+    const constraints: [string, number][] = Object.entries(
+      property.otherFields,
+    ).filter(([fieldName, _]) => CONSTRAINT_RE.test(fieldName));
+
+    if (seen.has(property.name)) {
+      const seenProperty = seen.get(property.name)!;
+
+      if (property.type && property.type !== seenProperty?.property?.type) {
+        errors.push(
+          `Type mismatch on "${property.name}". Got "${property.type}" expected "${seenProperty?.property?.type}"`,
+        );
+      }
+
+      for (const [fieldName, fieldValue] of constraints) {
+        const constraintNarrow = propertyConstraintMerging[fieldName];
+        if (constraintNarrow) {
+          const narrowedConstraint = constraintNarrow(
+            fieldValue,
+            seenProperty.numberConstraints[fieldName],
+          );
+
+          seenProperty.numberConstraints[fieldName] = narrowedConstraint;
+        }
+      }
+      errors.push(...validationConstraintPairs(seenProperty.numberConstraints));
+    } else {
+      seen.set(property.name, {
+        property,
+        numberConstraints: Object.fromEntries(constraints),
+      });
+    }
+  }
+
+  return errors;
+};
+
+/**
+//  * Flatten JSONSchema into all properties. This traverses schemas recursively.
+//  * Caveat of using recursing is potential stack overflow due to (lack of) tail call optimization.
+//  * Could be rewritten to an iterative implementation.
+//  *   - but realistically schemas are not going to inherit deeply enough for stack overflow.
+ */
+const flattenProperties = (schema: PropertyGroup): Property[] => {
+  const nestedProps = schema.parents.flatMap((prop: PropertyGroup) =>
+    flattenProperties(prop),
+  );
+
+  return [...schema.properties, ...nestedProps];
+};
+
 /**
  * Class that encapsulates JsonSchema validation.
  */
@@ -203,27 +278,16 @@ export class JsonSchemaCompiler {
    * @throws if any types of duplicate properties mismatch
    */
   async prevalidateProperties(schema: any) {
-    const self = this;
-    const bundled = await $RefParser.bundle(schema, {
-      resolve: {
-        // Look up http references through class-supplied resolver.
-        http: {
-          order: 1,
-          read(file: FileInfo) {
-            return self.resolver(file.url);
-          },
-        },
-      },
-    });
-    if (bundled.properties && bundled.allOf) {
+    const resolved = await allOfResolve(schema, this.resolver);
+    if (resolved.properties && resolved.parents) {
       // flattenNestedProps is recursivly defined
-      const res = flattenNestedProps(bundled);
+      const res = flattenProperties(resolved);
       if (res.length > 0) {
         // Check for type incompatibilities.
         // @todo: does not handle format or other type-related properties. Only checks for type.
-        const duplicateErrors = propertyKeyValidator(...res);
-        if (duplicateErrors.length > 0) {
-          throw new TypeMismatch(duplicateErrors.join("\n"));
+        const errors = propertyKeyValidator(res);
+        if (errors.length > 0) {
+          throw new TypeMismatch(errors.join("\n"));
         }
       }
     }
