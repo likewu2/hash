@@ -201,74 +201,221 @@ describe("compatibility validation", () => {
   });
 });
 
-const resolveSchema1 = {
-  $id: "https://example.com/geographical-location.schema.json",
-  $schema: "https://json-schema.org/draft/2020-12/schema",
-  title: "Longitude and Latitude Values",
-  description: "A geographical coordinate.",
-  required: ["latitude", "longitude"],
-  type: "object",
-  properties: {
-    latitude: {
-      type: "number",
-      minimum: -90,
-      maximum: 90,
-    },
-    longitude: {
-      type: "number",
-      minimum: -180,
-      maximum: 180,
-    },
-  },
-};
+describe("allOfResolve", () => {
+  it("can resolve a simple schema", async () => {
+    const schema = {
+      $id: "https://example.com/person.schema.json",
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      title: "Person",
+      type: "object",
 
-const resolveSchema2 = {
-  $id: "https://example.com/link.json",
-  type: "object",
-  properties: {
-    rel: { type: "array", items: [{ type: "string", pattern: "self" }] },
-    href: { type: "string" },
-  },
-};
-
-const schema = {
-  $id: "https://example.com/person.schema.json",
-  $schema: "https://json-schema.org/draft/2020-12/schema",
-  title: "Person",
-  type: "object",
-  allOf: [
-    { $ref: 1 },
-    {
       properties: {
-        age: {
-          description:
-            "Age in years which must be equal to or greater than zero.",
-          type: "integer",
+        firstName: {
+          type: "string",
+          description: "The person's first name.",
+        },
+        lastName: {
+          type: "string",
+          description: "The person's last name.",
+        },
+      },
+    };
+
+    const res = await allOfResolve(schema, jest.fn());
+
+    expect(res.parents).toEqual([]);
+    expect(res.$id).toEqual(schema.$id);
+    expect(res.properties).toEqual([
+      {
+        name: "firstName",
+        type: "string",
+        format: undefined,
+        description: "The person's first name.",
+        otherFields: {},
+      },
+      {
+        name: "lastName",
+        type: "string",
+        format: undefined,
+        description: "The person's last name.",
+        otherFields: {},
+      },
+    ]);
+  });
+
+  it("can flatten allOf properties on leaf schema", async () => {
+    const schema = {
+      $id: "https://example.com/person.schema.json",
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      title: "Person",
+      type: "object",
+      allOf: [
+        {
+          properties: {
+            age: {
+              description:
+                "Age in years which must be equal to or greater than zero.",
+              type: "integer",
+              minimum: 0,
+            },
+          },
+        },
+      ],
+      properties: {
+        firstName: {
+          type: "string",
+          description: "The person's first name.",
+        },
+        lastName: {
+          type: "string",
+          description: "The person's last name.",
+        },
+      },
+    };
+
+    const res = await allOfResolve(schema, jest.fn());
+
+    expect(res.parents).toEqual([]);
+    expect(res.$id).toEqual(schema.$id);
+    expect(res.properties).toEqual([
+      {
+        name: "firstName",
+        type: "string",
+        format: undefined,
+        description: "The person's first name.",
+        otherFields: {},
+      },
+      {
+        name: "lastName",
+        type: "string",
+        format: undefined,
+        description: "The person's last name.",
+        otherFields: {},
+      },
+      {
+        name: "age",
+        type: "integer",
+        format: undefined,
+        description:
+          "Age in years which must be equal to or greater than zero.",
+        otherFields: {
           minimum: 0,
         },
       },
-    },
-    { $ref: 1 },
-  ],
-  properties: {
-    firstName: {
-      type: "string",
-      description: "The person's first name.",
-    },
-    lastName: {
-      type: "string",
-      description: "The person's last name.",
-    },
-  },
-};
+    ]);
+  });
 
-describe.only("yes", () => {
-  it("allOfResolve", async () => {
-    const mockReturn = jest
-      .fn()
-      .mockResolvedValueOnce(resolveSchema1)
-      .mockResolvedValueOnce(resolveSchema2);
+  it("can resolve a nested schema", async () => {
+    const resolveSchema = {
+      $id: "https://example.com/geographical-location.schema.json",
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      title: "Longitude and Latitude Values",
+      description: "A geographical coordinate.",
+      required: ["latitude", "longitude"],
+      type: "object",
+      properties: {
+        latitude: {
+          type: "number",
+          minimum: -90,
+          maximum: 90,
+        },
+        longitude: {
+          type: "number",
+          minimum: -180,
+          maximum: 180,
+        },
+      },
+    };
+
+    const schema = {
+      $id: "https://example.com/person.schema.json",
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      title: "Person",
+      type: "object",
+      allOf: [
+        { $ref: 1 },
+        {
+          properties: {
+            age: {
+              description:
+                "Age in years which must be equal to or greater than zero.",
+              type: "integer",
+              minimum: 0,
+            },
+          },
+        },
+      ],
+      properties: {
+        firstName: {
+          type: "string",
+          description: "The person's first name.",
+        },
+        lastName: {
+          type: "string",
+          description: "The person's last name.",
+        },
+      },
+    };
+
+    const mockReturn = jest.fn().mockResolvedValueOnce(resolveSchema);
+
     const res = await allOfResolve(schema, mockReturn);
-    expect(res).toBeUndefined();
+
+    expect(res.$id).toEqual(schema.$id);
+    expect(res.parents).toHaveLength(1);
+    const onlyParent = res.parents[0];
+
+    expect(onlyParent.$id).toEqual(resolveSchema.$id);
+    expect(onlyParent.parents).toEqual([]);
+
+    expect(onlyParent.properties).toEqual([
+      {
+        name: "latitude",
+        type: "number",
+        format: undefined,
+        description: undefined,
+        otherFields: {
+          maximum: 90,
+          minimum: -90,
+        },
+      },
+      {
+        name: "longitude",
+        type: "number",
+        format: undefined,
+        description: undefined,
+        otherFields: {
+          maximum: 180,
+          minimum: -180,
+        },
+      },
+    ]);
+
+    expect(res.properties).toEqual([
+      {
+        name: "firstName",
+        type: "string",
+        format: undefined,
+        description: "The person's first name.",
+        otherFields: {},
+      },
+      {
+        name: "lastName",
+        type: "string",
+        format: undefined,
+        description: "The person's last name.",
+        otherFields: {},
+      },
+      {
+        name: "age",
+        type: "integer",
+        format: undefined,
+        description:
+          "Age in years which must be equal to or greater than zero.",
+        otherFields: {
+          minimum: 0,
+        },
+      },
+    ]);
   });
 });

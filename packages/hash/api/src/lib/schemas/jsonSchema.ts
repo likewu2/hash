@@ -5,7 +5,7 @@ import $RefParser, {
   FileInfo,
   JSONSchema,
 } from "@apidevtools/json-schema-ref-parser";
-import { cloneDeep } from "lodash";
+import { cloneDeep, partition } from "lodash";
 import { FRONTEND_URL } from "../config";
 
 /**
@@ -106,7 +106,7 @@ export class TypeMismatch extends Error {
 }
 
 export type PropertyGroup = {
-  parents?: PropertyGroup[];
+  parents: PropertyGroup[];
   $id?: string;
   properties: Property[];
 };
@@ -118,16 +118,6 @@ export type Property = {
   description?: string;
   otherFields: Record<string, any>;
 };
-
-const partition = <T>(xs: Array<T>, pred: (t: T) => boolean) =>
-  xs.reduce<[T[], T[]]>(
-    (rst, elm) => {
-      // eslint-disable-next-line no-unused-expressions
-      pred(elm) ? rst[0].push(elm) : rst[1].push(elm);
-      return rst;
-    },
-    [[], []],
-  );
 
 function extractProperties(schema: Record<string, any>): PropertyGroup {
   const properties: Property[] = [];
@@ -144,7 +134,7 @@ function extractProperties(schema: Record<string, any>): PropertyGroup {
       otherFields,
     });
   }
-  return { $id: schema?.$id, properties };
+  return { $id: schema?.$id, parents: [], properties };
 }
 
 export async function allOfResolve(
@@ -153,12 +143,10 @@ export async function allOfResolve(
 ): Promise<PropertyGroup> {
   const allOf = schema?.allOf ?? {};
 
-  let nestedAndSpreaded: [PropertyGroup[] | undefined, PropertyGroup[]] = [
-    undefined,
-    [],
-  ];
+  let nestedAndSpreaded: [PropertyGroup[], PropertyGroup[]] = [[], []];
+
   if (allOf && allOf.length > 0) {
-    nestedAndSpreaded = partition(
+    nestedAndSpreaded = partition<PropertyGroup>(
       await Promise.all(
         allOf.map(async (subSchema: Record<string, any>) => {
           return subSchema.$ref
@@ -175,8 +163,8 @@ export async function allOfResolve(
 
   const schemaProps = extractProperties(schema).properties;
   return {
-    parents,
     $id: schema?.$id,
+    parents,
     properties: [...schemaProps, ...otherprops],
   };
 }
