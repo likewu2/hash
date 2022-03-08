@@ -75,17 +75,8 @@ class __EntityType {
     this.updatedAt = updatedAt;
   }
 
-  static async validateJsonSchema(
-    client: DBClient,
-    params: {
-      name: string;
-      schema?: JSONObject | null;
-      description?: string | null;
-    },
-  ) {
-    const { name, schema, description } = params;
-
-    const jsonSchemaCompiler = new JsonSchemaCompiler(async (schema$id) => {
+  private static jsonSchemaCompiler(client: DBClient) {
+    return new JsonSchemaCompiler(async (schema$id) => {
       const resolvedEntityType = await EntityType.getEntityTypeBySchema$id(
         client,
         {
@@ -98,6 +89,19 @@ class __EntityType {
         throw new Error(`Could not find schema with $id = ${schema$id}`);
       }
     });
+  }
+
+  static async validateJsonSchema(
+    client: DBClient,
+    params: {
+      name: string;
+      schema?: JSONObject | null;
+      description?: string | null;
+    },
+  ) {
+    const { name, schema, description } = params;
+
+    const jsonSchemaCompiler = EntityType.jsonSchemaCompiler(client);
 
     const properties = await jsonSchemaCompiler.jsonSchema({
       title: name,
@@ -241,6 +245,14 @@ class __EntityType {
     const dbEntityTypes = await client.getEntityTypeParents(params);
 
     return dbEntityTypes.map((entityType) => new EntityType(entityType));
+  }
+
+  async getEntityTypeInheritanceChain(client: DBClient) {
+    const jsonSchemaCompiler = EntityType.jsonSchemaCompiler(client);
+
+    const resolved = await jsonSchemaCompiler.resolveAllOf(this.properties);
+
+    return resolved;
   }
 
   public static async fetchComponentIdBlockSchema(componentId: string) {

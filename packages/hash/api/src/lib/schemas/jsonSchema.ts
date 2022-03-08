@@ -277,20 +277,22 @@ export class JsonSchemaCompiler {
    * @param schema schema object
    * @throws if any types of duplicate properties mismatch
    */
-  async prevalidateProperties(schema: any) {
+  async resolveAllOf(schema: Record<string, any>): Promise<PropertyGroup> {
     const resolved = await allOfResolve(schema, this.resolver);
     if (resolved.properties && resolved.parents) {
       // flattenNestedProps is recursivly defined
       const res = flattenProperties(resolved);
       if (res.length > 0) {
         // Check for type incompatibilities.
-        // @todo: does not handle format or other type-related properties. Only checks for type.
+        // @todo: does not handle format. Only checks types and type constraints
         const errors = propertyKeyValidator(res);
         if (errors.length > 0) {
           throw new TypeMismatch(errors.join("\n"));
         }
       }
     }
+
+    return resolved;
   }
 
   /**
@@ -336,7 +338,7 @@ export class JsonSchemaCompiler {
 
     try {
       // modifies schema in-line, therefore schema is cloned.
-      await this.prevalidateProperties(cloneDeep(schema));
+      await this.resolveAllOf(cloneDeep(schema));
     } catch (err: any) {
       // underlying $RefParser is more strict than ajv when it comes to validation
       //  - because of ref-inlining, every allOf/oneOf/other referenced schemas are validated
