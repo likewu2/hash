@@ -21,7 +21,7 @@ describe("compatibility validation", () => {
         createdAt: { type: "string", format: "date-time" },
       },
     };
-    await jsonSchemaCompiler.prevalidateProperties(schema);
+    await jsonSchemaCompiler.resolveAllOf(schema);
     // no error should be thrown
   });
 
@@ -44,9 +44,7 @@ describe("compatibility validation", () => {
         createdAt: { type: "string", format: "date-time" },
       },
     };
-    await expect(
-      jsonSchemaCompiler.prevalidateProperties(schema),
-    ).rejects.toThrowError(
+    await expect(jsonSchemaCompiler.resolveAllOf(schema)).rejects.toThrowError(
       /Type mismatch on "age". Got "string" expected "number"/i,
     );
   });
@@ -71,7 +69,7 @@ describe("compatibility validation", () => {
       },
     };
     await expect(
-      jsonSchemaCompiler.prevalidateProperties(schema),
+      jsonSchemaCompiler.resolveAllOf(schema),
     ).resolves.toBeUndefined();
   });
 
@@ -99,9 +97,7 @@ describe("compatibility validation", () => {
         createdAt: { type: "string", format: "date-time" },
       },
     };
-    await expect(
-      jsonSchemaCompiler.prevalidateProperties(schema),
-    ).rejects.toThrowError(
+    await expect(jsonSchemaCompiler.resolveAllOf(schema)).rejects.toThrowError(
       /Type mismatch on "age". Got "number" expected "string"/i,
     );
   });
@@ -131,7 +127,7 @@ describe("compatibility validation", () => {
       },
     };
     await expect(
-      jsonSchemaCompiler.prevalidateProperties(schema),
+      jsonSchemaCompiler.resolveAllOf(schema),
     ).resolves.toBeUndefined();
   });
 
@@ -165,9 +161,7 @@ describe("compatibility validation", () => {
         createdAt: { type: "string", format: "date-time" },
       },
     };
-    await expect(
-      jsonSchemaCompiler.prevalidateProperties(schema),
-    ).rejects.toThrowError(
+    await expect(jsonSchemaCompiler.resolveAllOf(schema)).rejects.toThrowError(
       /Type mismatch on "height". Got "string" expected "number"/i,
     );
   });
@@ -200,7 +194,7 @@ describe("compatibility validation", () => {
       },
     };
     await expect(
-      jsonSchemaCompiler.prevalidateProperties(schema),
+      jsonSchemaCompiler.resolveAllOf(schema),
     ).resolves.toBeUndefined();
   });
 
@@ -224,9 +218,7 @@ describe("compatibility validation", () => {
         age: { type: "integer", minimum: -100, maximum: -1 },
       },
     };
-    await expect(
-      jsonSchemaCompiler.prevalidateProperties(schema),
-    ).rejects.toThrow(
+    await expect(jsonSchemaCompiler.resolveAllOf(schema)).rejects.toThrow(
       "Constraint 'minimum' (0) to 'maximum' (-1) defines a negative interval.",
     );
   });
@@ -258,7 +250,7 @@ describe("compatibility validation", () => {
       },
     };
     await expect(
-      jsonSchemaCompiler.prevalidateProperties(schema),
+      jsonSchemaCompiler.resolveAllOf(schema),
     ).resolves.toBeUndefined();
   });
 });

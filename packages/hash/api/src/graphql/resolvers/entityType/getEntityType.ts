@@ -21,5 +21,8 @@ export const getEntityType: Resolver<
     );
   }
 
+  // eslint-disable-next-line no-console
+  console.log(await entityType.getEntityTypeInheritanceChain(dataSources.db));
+
   return entityType.toGQLEntityType();
 };

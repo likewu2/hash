@@ -11,7 +11,7 @@ import {
   Visibility,
 } from "../graphql/apiTypes.gen";
 import { EntityTypeMeta, EntityTypeTypeFields } from "../db/adapter";
-import { JsonSchemaCompiler } from "../lib/schemas/jsonSchema";
+import { JsonSchemaCompiler, PropertyGroup } from "../lib/schemas/jsonSchema";
 
 const { FRONTEND_URL } = require("../lib/config");
 
@@ -247,7 +247,9 @@ class __EntityType {
     return dbEntityTypes.map((entityType) => new EntityType(entityType));
   }
 
-  async getEntityTypeInheritanceChain(client: DBClient) {
+  async getEntityTypeInheritanceChain(
+    client: DBClient,
+  ): Promise<PropertyGroup> {
     const jsonSchemaCompiler = EntityType.jsonSchemaCompiler(client);
 
     const resolved = await jsonSchemaCompiler.resolveAllOf(this.properties);
@@ -261,6 +263,7 @@ class __EntityType {
       `${componentId.replace(/\/+$/, "")}/`,
     );
 
+    // @todo: consider security implications of requesting user-specified path
     const blockSchema = await (await fetch(componentIdUrl.href))
       .json()
       .catch(() => ({}));
