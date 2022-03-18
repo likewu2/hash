@@ -15,6 +15,8 @@ use crate::{
     simulation::package::context::ContextColumn,
 };
 
+// TODO: DOC - Do we want this explanation under Context packages, or do we want to link to this
+//  from the Context packages doc
 /// The context is global, consistent data about the simulation at a single point in time, which is
 /// shared between all agents.
 ///

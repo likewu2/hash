@@ -1,3 +1,4 @@
+//! TODO: DOC - Should explain the engine, signpost to the core modules
 #![feature(backtrace, box_patterns, map_try_insert, once_cell, test, is_sorted)]
 #![warn(
     rust_2018_compatibility,
