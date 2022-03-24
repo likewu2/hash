@@ -4,7 +4,7 @@
   "https://blockprotocol.org/blocks/@hash/callout": "https://blockprotocol.org/blocks/@hash/callout",
   "https://blockprotocol.org/blocks/@hash/person": "https://blockprotocol.org/blocks/@hash/person",
   "https://blockprotocol.org/blocks/@hash/image": "https://blockprotocol.org/blocks/@hash/image",
-  "https://blockprotocol.org/blocks/@hash/table": "https://blockprotocol.org/blocks/@hash/table",
+  "https://blockprotocol.org/blocks/@hash/table": "http://localhost:62678",
   "https://blockprotocol.org/blocks/@hash/divider": "https://blockprotocol.org/blocks/@hash/divider",
   "https://blockprotocol.org/blocks/@hash/embed": "https://blockprotocol.org/blocks/@hash/embed",
   "https://blockprotocol.org/blocks/@hash/code": "https://blockprotocol.org/blocks/@hash/code",
